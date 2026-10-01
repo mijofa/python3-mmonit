@@ -6,6 +6,8 @@ import gzip
 import fastapi
 import xml.etree.ElementTree
 
+import monit_xml
+
 app = fastapi.FastAPI()
 
 
@@ -40,10 +42,21 @@ async def collector(request: fastapi.Request):
     #     incoming_data = gzip.decompress(await request.body())
 
     # FIXME: Use fastapi-xml? https://github.com/cercide/fastapi-xml
-    incoming_data = xml.etree.ElementTree.fromstring(await request.body())
-    xml.etree.ElementTree.indent(incoming_data, space='\t', level=0)
-    # NOTE: 'unicode' here is a magic word to make it generate a string object instead of a bytes object
-    print(xml.etree.ElementTree.tostring(incoming_data, encoding='unicode'))
+    incoming_data: xml.etree.ElementTree.Element = xml.etree.ElementTree.fromstring(await request.body())
+
+    # ref: https://github.com/MMonit/monit/blob/release-6.0.0/src/http/xml.c#L98-L109
+    if incoming_data.tag != 'monit':
+        raise Exception('Must be "monit" XML')
+
+    print(monit_xml.Update.from_xml(
+        id=incoming_data.get('id'),
+        incarnation=incoming_data.get('incarnation'),
+        version=tuple(int(i) for i in incoming_data.get('version').split('.')),
+        tree=incoming_data))
+
+    # xml.etree.ElementTree.indent(incoming_data, space='\t', level=0)
+    # # NOTE: 'unicode' here is a magic word to make it generate a string object instead of a bytes object
+    # print(xml.etree.ElementTree.tostring(incoming_data, encoding='unicode'))
 
     return fastapi.responses.Response(
         # FIXME: This is not replacing the existing 'Server' header, but it works fine anyway so do we care?
